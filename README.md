@@ -1,5 +1,9 @@
 # UnixShell
 
+This application creates a new shell that simulates the shell built into Unix/Linux operating system.  The new shell appears with the prompt [MyShell] and runs most of the normal commands like ls, cd, mkdir, etc. including interpreting wildcard characters '\*'.
+
+To exit the application, we have to type 'exit'.
+
 # Technologies
 
 - C
