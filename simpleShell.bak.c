@@ -22,7 +22,6 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <string.h>
-#include <dirent.h>
 
 
 void execute(char **, int, char **);
@@ -39,7 +38,6 @@ void trim(char *);
 #define BACKGROUND		5
 #define APPEND_OUT		6
 
-#define SEPARATORS "\n\t "
 
 typedef void (*sighandler_t)(int);
 
@@ -58,10 +56,8 @@ int main(int argc, char *argv[])
 {
 	int i, mode = SIMPLE, cmdArgc;
 	size_t len = CMD_LENGTH;
-	char *cpt, *command, *fullcommand,*cmdArgv[CMD_LENGTH], *extCommand, *rwFile = NULL;
+	char *cpt, *command, *fullcommand,*cmdArgv[CMD_LENGTH], *rwFile = NULL;
 	command = (char*)malloc(sizeof(char)*CMD_LENGTH);
-	extCommand = (char*)malloc(sizeof(char)*CMD_LENGTH);
-	fullcommand = (char*)malloc(sizeof(char)*CMD_LENGTH);
 	
 	char curDir[100], homDir[100];
 	char *prompt="MyShell";		// Initial Prompt
@@ -91,50 +87,18 @@ int main(int argc, char *argv[])
 		while(*fullcommand !='\n')
 		{
 			*cpt++ = *fullcommand++;
-			if(*fullcommand == ';' || *fullcommand == '&')		// Breaking the commandline into
+			if(*fullcommand == ';')		// Breaking the commandline into
 				{			// separate commands and process
-				if (*fullcommand == '&')
-					*cpt++ = *fullcommand++;
-				else
-					*fullcommand++;		// them one by one
+				*fullcommand++;		// them one by one
 				*cpt='\0';
-			if (index(command,'*')!=NULL || index(command,'?')!=NULL)
-			{								// if wildcard chars like * and ? are
-				myGlob(command, &extCommand);				// are entered, then the command is passed
-				strcpy(command,extCommand);				// to myGlob function where they are
-			}								// expanded and sent back in the string 'extCommand'
+
 				cmdArgc = parse(command, cmdArgv, &rwFile, &mode);
-		if(strcmp(*cmdArgv, "cd") == 0  && cmdArgc == 2)
-			{				
-			chdir(cmdArgv[1]);		// Change to the dir required
-			}
-		else 
-		if(strcmp(*cmdArgv, "cd")==0 && cmdArgc == 1)
-			{
-			chdir(homDir);			// Change to home dir
-			}
-		else
-			if(strcmp(*cmdArgv, "prompt")==0)
-			{
-			prompt=strdup(cmdArgv[1]);	// Changing Prompt
-			}
-		else
-			{
-			execute(cmdArgv, mode, &rwFile);
-			}
-		bzero(extCommand,CMD_LENGTH);
-		//		execute (cmdArgv, mode, &rwFile);
-		//		bzero(extCommand,CMD_LENGTH);
+				execute (cmdArgv, mode, &rwFile);
 				cpt=command;
-		mode = SIMPLE;
 				}
 		}
 		*cpt='\0';
-		if (index(command,'*')!=NULL || index(command,'?')!=NULL)		// same action as mentioned above
-		{
-		myGlob(command, &extCommand);
-		strcpy(command,extCommand);
-		}
+
 		cmdArgc = parse(command, cmdArgv, &rwFile, &mode);
 
 		if(strcmp(*cmdArgv, "cd") == 0  && cmdArgc == 2)
@@ -155,8 +119,6 @@ int main(int argc, char *argv[])
 			{
 			execute(cmdArgv, mode, &rwFile);
 			}
-		bzero(extCommand,CMD_LENGTH);
-	}
 	return 0;
 }
 
@@ -176,12 +138,6 @@ int parse(char *command, char *cmdArgv[], char **rwFile, int *cmdMode)
 {
 	int cmdArgc = 0, terminate = 0;
 	char *cmdLine = command;
-
-	while((*cmdLine == ' ' || *cmdLine == '\t' || *cmdLine == '\n') && terminate == 0)
-	{
-		*cmdLine = '\0';
-		cmdLine++;
-	}
 	while(*cmdLine != '\0' && terminate == 0)
 	{
 		*cmdArgv = cmdLine;
@@ -192,8 +148,6 @@ int parse(char *command, char *cmdArgv[], char **rwFile, int *cmdMode)
 			{
 				case '&':
 					*cmdMode = BACKGROUND;
-					*cmdArgv = '\0';
-					terminate = 1;
 					break;
 				case '>':
 					*cmdMode = REDIRECT_OUT;
@@ -211,7 +165,7 @@ int parse(char *command, char *cmdArgv[], char **rwFile, int *cmdMode)
 					terminate = 1;			// Command line processing is
 					break;				// stopped once we encounter
 				case '<':				// special chars like >,<,|
-					*cmdMode = REDIRECT_IN;
+					*cmdMode = INPUT_REDIRECTION;
 					*cmdArgv = '\0';
 					cmdLine++;
 					while(*cmdLine == ' ' || *cmdLine == '\t')
@@ -227,6 +181,7 @@ int parse(char *command, char *cmdArgv[], char **rwFile, int *cmdMode)
 					while(*cmdLine == ' ' || *cmdLine == '\t')
 						cmdLine++;
 					*rwFile = cmdLine;		// Next part of the command
+					trim(*rwFile);			// after pipe
 					terminate = 1;
 					break;
 			}
@@ -322,10 +277,7 @@ void execute(char **cmdArgv, int mode, char **rwFile)
 	else
 		{
 		if(mode == BACKGROUND)
-			{
-			printf("[1] %d\n",pid);
 			;
-			}
 		else if(mode == PIPELINE)
 		{
 			waitpid(pid, &status1, 0);		// wait for process 1 to finish
@@ -369,153 +321,3 @@ void handle_signal(int signo)
 	printf("\n[Ctrl-C|Ctrl-d|Ctrl-z ignored\n ");
 	fflush(stdout);
 }
-
-
-
-/****************      Function to expand wild chars like '*' and '?'    *****************
- ****************
- **************** The first param of the func takes the commandline string and 
- **************** looks for wildcard characters.  If any such char is 
- **************** found, then filename entries are read from the directory
- **************** structure and matching files are pushed into string 'extCommand'
- ***************/ 
-
-
-int myGlob(char *expr, char **extCommand)
-{
-	DIR *dp;
-	struct dirent *dirp;
-	char *dirname=".";				// only current directory is searched for files
-	char *filename;
-	char *str;
-	char *temp;
-	int found=1,j=0;
-	char s[2]=" ";
-	int nomatch=1;
-
-	str=malloc(sizeof(char *)*50);
-	str=strtok(expr,s );					// commandline passed to this func is split into
-								// separate words based on space (' ') then each
- 	while(str!=NULL)					// word is examined to see whether it contains '?' or '*'
-	{
-		if(index(str,'?')!=NULL)			// if the '?' is found it is processed in the following lines
-		{
-			if ((dp=opendir("."))==NULL)		// opening the current directory structure
-			{
-				printf("cant open ");
-				exit(1);
-			}
-
-			while ((dirp=readdir(dp))!=NULL)	// reading each file entry
-			{
-				found=1;
-				temp=str;			// word from the command is stored in 'temp'
-				filename=dirp->d_name;		// filename from directory entry is stored in 'filename'
-
-				while(*temp!='\0' )
-				{
-					if (*temp !='?' && *temp!=*filename)
-					{
-						found=0;	// means name not matching
-						break;
-					}
-
-					if(*temp == '?')	// if '?' appears, that char is skipped in both
-					{			// the word and filename
-						*temp++;
-						*filename++;
-					}
-
-					*temp++;		// moving to next chars
-					*filename++;
-				}			
-				if (found == 1)
-				{
-					nomatch=0;
-					strcat(*extCommand,dirp->d_name);	// if a name match is found it is pushed into
-					strcat(*extCommand," ");		// the string 'extCommand' and a space is added
-				}
-			}
-
-			closedir(dp);
-		}
-
-		else
-
-		if(index(str,'*')!=NULL)			// if the '*' is found it is processed in the following lines
-		{
-			if ((dp=opendir("."))==NULL)
-			{
-				printf("cant open ");
-				exit(1);
-			}
-			while ((dirp=readdir(dp))!=NULL)
-			{
-				temp=str;
-				filename=dirp->d_name;
-				found=0;
-				while(*temp!='\0' )		// upto here same as above where '?' is processed
-				{
-					if (*temp !='*' && *temp!=*filename)	// a non-star char is not matching. So 
-						break;				// skip processing the filename
-					while (*temp==*filename    )
-					{
-						*temp++;			// scan the chars in word and filename
-						*filename++;			// as long as they are matching
-					}
-					if(*temp=='*' && *(temp+1) == '\0')	// if '*' is found as last char in word
-					{					// it means match is found. So set 
-						found=1;			// 'found' flag to 1 (true) and skip
-						break;
-					}
-					if(*temp == '*')			// When a '*' is found in the word, look
-					{					// for next char in word and search for
-						*temp++;			// that char in filename
-						while(*temp!=*filename    )
-						{
-							if(*temp=='\0' || *filename=='\0')
-							break;			// if end of word or filename reached, stop
-							*filename++;		// search further
-						}
-					while (*temp==*filename    && *temp!='\0')
-					{					// continue matching until end of word is reached
-						*temp++;
-						*filename++;
-					}
-					if(*temp == *filename )
-						found=1;
-					else
-						found=0;
-					}
-					*temp++;
-					*filename++;
-				}			
-
-				if (found == 1)
-				{
-					nomatch=0;
-					strcat(*extCommand,dirp->d_name);	// if a name match is found it is pushed into
-					strcat(*extCommand," ");		// the string 'extCommand' and a space is added
-				}
-			}
-
-			closedir(dp);
-		}
-
-		else
-		{
-			strcat(*extCommand,str);			// other non-* and non-? words of the command line
-			strcat(*extCommand," ");			// are pushed into the string 'extCommand and a space is added.
-		}
-		str=strtok(NULL,s);
-	}
-	if (nomatch == 1)
-		{
-		strcat(*extCommand,temp);
-		strcat(*extCommand," ");
-		}
-	return ;
-}
-
-
-
