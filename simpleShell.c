@@ -33,8 +33,8 @@ void trim(char *);
 
 #define CMD_LENGTH 80
 #define SIMPLE 			1	
-#define REDIRECT_OUT	 	2
-#define REDIRECT_IN 		3
+#define REDIRECT_OUT 	2
+#define REDIRECT_IN 	3
 #define PIPELINE 		4
 #define BACKGROUND		5
 #define APPEND_OUT		6
